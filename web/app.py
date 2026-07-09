@@ -11,7 +11,7 @@ Configuración por variables de entorno (todas opcionales):
   MODELO_LLM  Modelo de Ollama a usar        (def. "llama3")
   RUTA_CSV    Carpeta con los CSV procesados  (def. <repo>/datos/datos_procesados)
   RUTA_PDFS   Carpeta con los PDF del corpus  (def. <repo>/datos/Docs)
-  HOST/PORT   Interfaz y puerto del servidor  (def. 127.0.0.1:8000)
+  HOST/PORT   Interfaz y puerto del servidor  (def. 0.0.0.0:8000)
 """
 import os
 import sys
@@ -119,6 +119,6 @@ def chat(msg: Mensaje):
 if __name__ == "__main__":
     import uvicorn
 
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
     uvicorn.run(app, host=host, port=port)
