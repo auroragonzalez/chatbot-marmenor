@@ -1,0 +1,36 @@
+# === Entorno virtual ===
+venv/
+.venv/
+env/
+
+# === Caché y compilados de Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+
+# === Configuración y secretos ===
+# La app se configura por variables de entorno (MODELO_LLM, HOST, PORT, RUTA_CSV...).
+# Nunca subir archivos con credenciales o configuración local.
+.env
+.env.*
+*.env
+
+# === Datos pesados (transferir al servidor por scp/rsync, no por git) ===
+# Superan el límite de 100 MB por archivo de GitHub (CSV de ~500 MB c/u).
+datos/
+
+# NOTA: chroma_db/ SÍ se versiona para que el servidor arranque sin reingestar.
+
+# === Logs ===
+*.log
+logs/
+
+# === Archivos de sistema ===
+.DS_Store
+Thumbs.db
+
+# === Editores / IDE ===
+.vscode/
+.idea/
+*.swp
+*~

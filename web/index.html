@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chatbot híbrido SQL + RAG · Mar Menor</title>
+<style>
+  :root {
+    --bg: #f3f6f8;
+    --panel: #ffffff;
+    --ink: #12232b;
+    --muted: #5c7280;
+    --line: #dbe4e9;
+    --brand: #0a7d8c;
+    --brand-ink: #ffffff;
+    --user: #0a7d8c;
+    --user-ink: #ffffff;
+    --bot: #eef3f5;
+    --bot-ink: #12232b;
+    --ok: #1f9d55;
+    --warn: #c2760a;
+    --err: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d171c;
+      --panel: #12232b;
+      --ink: #e8eef1;
+      --muted: #8ba3ae;
+      --line: #24404b;
+      --brand: #2bb4c7;
+      --brand-ink: #062126;
+      --user: #2bb4c7;
+      --user-ink: #062126;
+      --bot: #172d36;
+      --bot-ink: #e8eef1;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header .logo {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--brand), #063b45);
+    display: grid; place-items: center; font-size: 18px; flex: none;
+  }
+  header h1 { font-size: 15px; margin: 0; line-height: 1.2; }
+  header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .spacer { flex: 1; }
+  .badge {
+    font-size: 11px; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+  .dot.pulse { animation: pulse 1.1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  main {
+    flex: 1; overflow-y: auto; padding: 22px 0;
+  }
+  .thread { max-width: 820px; margin: 0 auto; padding: 0 18px;
+            display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; gap: 10px; align-items: flex-start; }
+  .row.user { flex-direction: row-reverse; }
+  .avatar { width: 30px; height: 30px; border-radius: 8px; flex: none;
+            display: grid; place-items: center; font-size: 15px;
+            background: var(--bot); }
+  .row.user .avatar { background: var(--user); color: var(--user-ink); }
+  .bubble {
+    padding: 11px 14px; border-radius: 14px; max-width: 82%;
+    background: var(--bot); color: var(--bot-ink);
+    line-height: 1.5; font-size: 14.5px; overflow-wrap: anywhere;
+  }
+  .row.user .bubble { background: var(--user); color: var(--user-ink); }
+  .bubble p { margin: 0 0 8px; } .bubble p:last-child { margin-bottom: 0; }
+  .bubble h1,.bubble h2,.bubble h3 { margin: 6px 0; font-size: 15px; }
+  .bubble ul,.bubble ol { margin: 6px 0; padding-left: 20px; }
+  .bubble code { background: rgba(127,127,127,.18); padding: 1px 5px;
+                 border-radius: 5px; font-size: .9em; }
+  .bubble pre { background: rgba(127,127,127,.14); padding: 10px; border-radius: 9px;
+                overflow-x: auto; } .bubble pre code { background: none; padding: 0; }
+  .bubble hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+  .tablewrap { overflow-x: auto; margin: 8px 0; }
+  .bubble table { border-collapse: collapse; font-size: 13px; width: auto; }
+  .bubble th, .bubble td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; white-space: nowrap; }
+  .bubble th { background: rgba(127,127,127,.12); }
+  .typing span { display: inline-block; width: 7px; height: 7px; margin-right: 3px;
+    border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2){ animation-delay: .2s; } .typing span:nth-child(3){ animation-delay: .4s; }
+  @keyframes blink { 0%,60%,100%{ opacity:.25; } 30%{ opacity:1; } }
+
+  .banner { max-width: 820px; margin: 0 auto 14px; padding: 0 18px; }
+  .banner .inner { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--muted); }
+  .banner .inner.err { border-color: var(--err); color: var(--err); }
+
+  footer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 18px; }
+  .composer { max-width: 820px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 13px; font: inherit; font-size: 14.5px; background: var(--bg);
+    color: var(--ink); max-height: 160px; line-height: 1.4;
+  }
+  textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+  textarea:disabled { opacity: .6; }
+  button.send {
+    border: none; background: var(--brand); color: var(--brand-ink);
+    border-radius: 12px; padding: 11px 18px; font: inherit; font-weight: 600;
+    cursor: pointer; flex: none;
+  }
+  button.send:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { max-width: 820px; margin: 6px auto 0; font-size: 11px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">🌊</div>
+    <div>
+      <h1>Chatbot híbrido SQL + RAG</h1>
+      <div class="sub">Consultas sobre el ecosistema del Mar Menor · SQL (DuckDB) + RAG (literatura científica)</div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge" id="modelBadge">modelo: …</span>
+    <span class="status"><span class="dot pulse" id="statusDot"></span><span id="statusText">conectando…</span></span>
+  </header>
+
+  <main id="main">
+    <div class="banner" id="banner"><div class="inner" id="bannerInner">Inicializando el motor (DuckDB, embeddings e ingesta de PDFs). Esto puede tardar un poco la primera vez…</div></div>
+    <div class="thread" id="thread"></div>
+  </main>
+
+  <footer>
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Escribe tu pregunta… (p. ej. «¿Cuál fue la temperatura máxima del agua registrada?»)" disabled></textarea>
+      <button class="send" id="send" disabled>Enviar</button>
+    </div>
+    <div class="hint">Enter para enviar · Shift+Enter para salto de línea</div>
+  </footer>
+
+<script>
+const thread = document.getElementById('thread');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const modelBadge = document.getElementById('modelBadge');
+const banner = document.getElementById('banner');
+const bannerInner = document.getElementById('bannerInner');
+let ready = false;
+
+/* ---------- mini renderizador markdown ---------- */
+function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function inline(s){
+  return esc(s)
+    .replace(/`([^`]+)`/g, (_,c)=>'<code>'+c+'</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function isSep(line){ return /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes('-'); }
+function splitCells(line){
+  let t = line.trim().replace(/^\|/,'').replace(/\|$/,'');
+  return t.split('|').map(c=>c.trim());
+}
+function renderMarkdown(md){
+  const lines = md.replace(/\r/g,'').split('\n');
+  let html = '', i = 0;
+  while (i < lines.length){
+    let line = lines[i];
+    // bloque de código
+    if (/^```/.test(line)){
+      let buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++; html += '<pre><code>'+esc(buf.join('\n'))+'</code></pre>'; continue;
+    }
+    // tabla
+    if (line.includes('|') && i+1 < lines.length && isSep(lines[i+1])){
+      const head = splitCells(line); i += 2; let rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== ''){
+        rows.push(splitCells(lines[i])); i++;
+      }
+      let t = '<div class="tablewrap"><table><thead><tr>';
+      head.forEach(h=> t += '<th>'+inline(h)+'</th>'); t += '</tr></thead><tbody>';
+      rows.forEach(r=>{ t += '<tr>'; r.forEach(c=> t += '<td>'+inline(c)+'</td>'); t += '</tr>'; });
+      t += '</tbody></table></div>'; html += t; continue;
+    }
+    // regla horizontal
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)){ html += '<hr>'; i++; continue; }
+    // encabezado
+    let h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h){ const n = Math.min(h[1].length,3); html += '<h'+n+'>'+inline(h[2])+'</h'+n+'>'; i++; continue; }
+    // listas
+    if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)){
+      const ordered = /^\s*\d+\.\s+/.test(line);
+      let items = [];
+      while (i < lines.length && (/^\s*[-*+]\s+/.test(lines[i]) || /^\s*\d+\.\s+/.test(lines[i]))){
+        items.push(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/, '')); i++;
+      }
+      html += (ordered?'<ol>':'<ul>') + items.map(it=>'<li>'+inline(it)+'</li>').join('') + (ordered?'</ol>':'</ul>');
+      continue;
+    }
+    // línea en blanco
+    if (line.trim() === ''){ i++; continue; }
+    // párrafo (agrupa líneas contiguas)
+    let para = [line]; i++;
+    while (i < lines.length && lines[i].trim() !== '' && !lines[i].includes('|')
+           && !/^\s*[-*+]\s+/.test(lines[i]) && !/^#{1,6}\s/.test(lines[i])
+           && !/^\s*(-{3,})\s*$/.test(lines[i]) && !/^```/.test(lines[i])){
+      para.push(lines[i]); i++;
+    }
+    html += '<p>'+para.map(inline).join('<br>')+'</p>';
+  }
+  return html;
+}
+
+/* ---------- UI de mensajes ---------- */
+function addMessage(role, contentHTML){
+  const row = document.createElement('div');
+  row.className = 'row ' + role;
+  const av = document.createElement('div');
+  av.className = 'avatar';
+  av.textContent = role === 'user' ? '🧑' : '🌊';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = contentHTML;
+  row.appendChild(av); row.appendChild(bubble);
+  thread.appendChild(row);
+  document.getElementById('main').scrollTop = document.getElementById('main').scrollHeight;
+  return bubble;
+}
+function typingBubble(){
+  return addMessage('bot', '<span class="typing"><span></span><span></span><span></span></span>');
+}
+
+async function send(){
+  const text = input.value.trim();
+  if (!text || !ready) return;
+  addMessage('user', esc(text).replace(/\n/g,'<br>'));
+  input.value = ''; autoGrow();
+  setEnabled(false);
+  const typing = typingBubble();
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message: text })
+    });
+    const data = await res.json();
+    typing.closest('.row').remove();
+    if (!res.ok){ addMessage('bot', '<em>⚠️ '+esc(data.error || 'Error del servidor')+'</em>'); }
+    else { addMessage('bot', renderMarkdown(data.reply || '')); }
+  } catch (e){
+    typing.closest('.row').remove();
+    addMessage('bot', '<em>⚠️ No se pudo contactar con el servidor.</em>');
+  } finally {
+    setEnabled(true); input.focus();
+  }
+}
+
+function setEnabled(on){
+  ready = on;
+  input.disabled = !on; sendBtn.disabled = !on;
+}
+function autoGrow(){ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; }
+
+input.addEventListener('input', autoGrow);
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+sendBtn.addEventListener('click', send);
+
+/* ---------- sondeo de estado ---------- */
+async function poll(){
+  try {
+    const res = await fetch('/status');
+    const s = await res.json();
+    modelBadge.textContent = 'modelo: ' + (s.model || '—');
+    if (s.error){
+      statusDot.className = 'dot err'; statusText.textContent = 'error';
+      bannerInner.className = 'inner err';
+      bannerInner.textContent = '❌ No se pudo inicializar el motor: ' + s.error;
+      setEnabled(false);
+      return;
+    }
+    if (s.ready){
+      statusDot.className = 'dot ok'; statusText.textContent = 'listo';
+      banner.style.display = 'none';
+      if (input.disabled){
+        setEnabled(true); input.focus();
+        addMessage('bot', renderMarkdown('¡Hola! Soy tu asistente sobre el **Mar Menor**. Puedo consultar las series de datos ambientales (SQL sobre DuckDB) y la literatura científica (RAG). ¿Qué quieres saber?'));
+      }
+      return;
+    }
+    statusDot.className = 'dot warm pulse'; statusText.textContent = 'inicializando…';
+    setTimeout(poll, 1500);
+  } catch (e){
+    statusText.textContent = 'sin conexión';
+    setTimeout(poll, 2000);
+  }
+}
+poll();
+</script>
+</body>
+</html>
