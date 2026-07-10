@@ -1,5 +1,6 @@
 # === Entorno virtual ===
 venv/
+ven/
 .venv/
 env/
 

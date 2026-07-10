@@ -1,4 +1,5 @@
 import os
+import glob
 import shutil
 import re
 import logging
@@ -54,14 +55,44 @@ class GestorRAG:
         #Si más de la mitad de las líneas parecen referencias, descartamos el chunk
         return (matches / len(lineas)) > 0.5
 
-    def cargar_directorio(self, ruta_directorio):
-        """Carga los PDFs de una carpeta."""
+    def _fuentes_en_db(self):
+        """Devuelve el conjunto de nombres de archivo (basename) de los PDF que
+        ya tienen chunks en Chroma, para poder saltárnoslos sin re-parsearlos."""
+        try:
+            items = self.db.get(include=["metadatas"])
+        except Exception:
+            return set()
+        return {
+            os.path.basename(m.get("source", ""))
+            for m in items.get("metadatas", []) or []
+            if m.get("source")
+        }
+
+    def cargar_directorio(self, ruta_directorio, saltar=None):
+        """Carga los PDFs de una carpeta, omitiendo los que ya estén ingeridos.
+
+        Parsear un PDF con PyPDF es caro (segundos por documento, decenas para
+        los informes largos), así que descartamos por nombre de archivo los que
+        ya están en la base vectorial ANTES de cargarlos. En un arranque sin
+        documentos nuevos esto evita minutos de trabajo inútil.
+        """
         if not os.path.exists(ruta_directorio) or not os.path.isdir(ruta_directorio):
             raise FileNotFoundError(f"La carpeta no existe o no es un directorio: {ruta_directorio}")
-        
-        print(f"Cargando todos los PDFs desde: {ruta_directorio}...")
-        loader = PyPDFDirectoryLoader(ruta_directorio)
-        documentos = loader.load()
+
+        saltar = saltar or set()
+        pdfs = sorted(glob.glob(os.path.join(ruta_directorio, "*.pdf")))
+        nuevos = [p for p in pdfs if os.path.basename(p) not in saltar]
+        omitidos = len(pdfs) - len(nuevos)
+        if omitidos:
+            print(f"Omitiendo {omitidos} PDF ya presentes en la base vectorial.")
+        if not nuevos:
+            print("No hay PDFs nuevos que cargar.")
+            return []
+
+        print(f"Cargando {len(nuevos)} PDF nuevos desde: {ruta_directorio}...")
+        documentos = []
+        for pdf in nuevos:
+            documentos.extend(PyPDFLoader(pdf).load())
         print(f"Se han cargado {len(documentos)} páginas en total.")
         return documentos
 
@@ -77,14 +108,20 @@ class GestorRAG:
 
     def calcular_ids_chunks(self, chunks):
         """
-        Asigna un ID único: 'ruta/archivo:pagina:indice'.
+        Asigna un ID único: 'archivo.pdf:pagina:indice'.
         Esto permite evitar duplicados si procesamos el mismo archivo varias veces.
+
+        Guardamos solo el nombre del archivo (basename), no la ruta absoluta, para
+        que tanto `source` como el `id` (que es lo que se muestra como fuente al
+        usuario) sean portables: la ruta absoluta de esta máquina no tendría
+        sentido al desplegar en el servidor.
         """
         ultimo_id_pagina = None
         indice_chunk_actual = 0
 
         for chunk in chunks:
-            fuente = chunk.metadata.get("source")
+            fuente = os.path.basename(chunk.metadata.get("source", ""))
+            chunk.metadata["source"] = fuente  # normalizamos a solo el nombre de archivo
             pagina = chunk.metadata.get("page") + 1 # Las páginas empiezan en 0, pero para el usuario es más natural empezar en 1
             id_pagina_actual = f"{fuente}:{pagina}"
 
@@ -134,7 +171,9 @@ class GestorRAG:
     def ingestar(self, ruta_pdf):
         """Método público para procesar un PDF completo."""
         try:
-            documentos = self.cargar_directorio(ruta_pdf)
+            documentos = self.cargar_directorio(ruta_pdf, saltar=self._fuentes_en_db())
+            if not documentos:
+                return
             chunks = self.dividir_texto(documentos)
             chunks_con_ids = self.calcular_ids_chunks(chunks)
             self.agregar_a_chroma(chunks_con_ids)
