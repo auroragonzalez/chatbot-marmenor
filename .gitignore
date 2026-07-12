@@ -16,9 +16,12 @@ __pycache__/
 .env.*
 *.env
 
-# === Datos pesados (transferir al servidor por scp/rsync, no por git) ===
-# Superan el límite de 100 MB por archivo de GitHub (CSV de ~500 MB c/u).
-datos/
+# === Datos ===
+# Se versionan CSV pequeños, PDFs y los CSV grandes COMPRIMIDOS (.csv.gz).
+# Los CSV crudos de ~500 MB NO se suben: superan el límite de 100 MB de GitHub
+# (DuckDB lee el .csv.gz de forma nativa, así que el .gz basta para desplegar).
+datos/datos_procesados/SAIH_Piezometros_unificados_limpios.csv
+datos/datos_procesados/SAIH_ramblas_unificadas_limpias.csv
 
 # NOTA: chroma_db/ SÍ se versiona para que el servidor arranque sin reingestar.
 

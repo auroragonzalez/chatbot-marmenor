@@ -85,6 +85,11 @@ class ConsultaSQL:
 
         for nombre_tabla, archivo in tablas.items():
             ruta = os.path.join(self.ruta_csv, archivo)
+            # Los CSV grandes se versionan comprimidos (.csv.gz) porque superan el
+            # límite de 100 MB de GitHub. DuckDB lee el gzip de forma transparente,
+            # así que usamos el .csv si está y, si no, recurrimos al .csv.gz.
+            if not os.path.exists(ruta) and os.path.exists(ruta + ".gz"):
+                ruta = ruta + ".gz"
             if os.path.exists(ruta):
                 self.con.execute(f"CREATE VIEW {nombre_tabla} AS SELECT * FROM read_csv_auto('{ruta}')")
             else:
